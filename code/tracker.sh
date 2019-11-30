@@ -1,1 +1,1 @@
-python3 tracker.py
+py tracker.py
