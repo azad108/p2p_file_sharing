@@ -51,8 +51,7 @@ def peerConnect():
 		with peerLock:
 			peers.append(newPeer)
 
-		peerId += 1
-		print(newPeer)
+		peerId += 1 
 		break
 		# signalConnectedPeerThread = threading.Thread(name="SIGNAL CONNECTED PEER", target=signalConnectedPeer, args=(len(peers)-1),)
 		# signalConnectedPeerThread.start()
