@@ -15,14 +15,10 @@ if __name__ == "__main__":
 	minAliveTime= sys.argv[3]
 
 
-
-
-
-
-
-
-
-	# downPort = downSocket.getsockname()[1]
+	downSocket = socket(AF_INET, SOCK_STREAM) # create a TCP socket that waits for a new peer to connect
+	downSocket.bind(('', 0))
+	downSocket.listen(8)
+	downPort = downSocket.getsockname()[1]
 
 
 def requestFiles(peerSocket, countdown):
@@ -38,11 +34,8 @@ def requestFiles(peerSocket, countdown):
 				'id': curPeerData['id'] ,
 				'filesize': int(os.path.getsize(file)),
 				'numchunks': int(os.path.getsize(file)/512)
-			}
-		# peerData = json.dumps(myFiles)
-		# peerSocket.send(peerData.encode())
+			} 
 		response = peerSocket.recv(1024).decode()
-		
 		filesOffered = json.loads(response)
 		for fname in filesOffered:
 			if fname in sharedDir:
@@ -50,7 +43,6 @@ def requestFiles(peerSocket, countdown):
 				chunksAcquired = int(os.path.getsize(fname)/512)
 
 		for fname in filesOffered:
-			print("FILE OFFERED: "+fname)
 			peerData = {
 				'id': curPeerData['id'],
 				'filename': fname, 
@@ -67,32 +59,33 @@ def requestFiles(peerSocket, countdown):
 				peerData['numchunks'] = int(os.path.getsize(fname)/512)
 				peerData['totalFiles'] = len(newDir)
 				peerSocket.send(json.dumps(peerData).encode())
-			else:
-				if DEBUG: print("PEER FILE/PARTS OF IT EXISTS!")
+			else: 
 				chunksProvided = int(filesOffered[fname]['numchunks'])
 				chunksAcquired = int(os.path.getsize(fname)/512)
 				if chunksAcquired > chunksProvided:
-					if DEBUG: print("Upload!!")
 					with open(fname, "+rb") as f:
-						print(str( f.read(10)))
-
 						f.seek(chunksProvided*512, 0)
 						## sending 512KB of data over to the peer
-						print (fname + ": " +json.dumps(filesOffered[fname]))
+						# print (fname + "======================: " +json.dumps(filesOffered[fname]))
+						print(filesOffered)
+						print(fname+" connect with: " + str((str(filesOffered[fname]['ip']), int(filesOffered[fname]['port']))))
 						upSocket = socket(AF_INET, SOCK_STREAM)
 						upSocket.connect((str(filesOffered[fname]['ip']), int(filesOffered[fname]['port']))) ## TCP connection with the new peer
+						if DEBUG: print("Upload!!" + " CA = " + str(chunksAcquired) + " CP = " + str(chunksProvided))
 						upSocket.send(f.read(524288))
 
 				elif chunksAcquired < chunksProvided:
-					if DEBUG: print("Download!")
+					
 					with open(fname, "+ab") as f:
-						print (fname + ": " +json.dumps(filesOffered[fname]))
-						downSocket = socket(AF_INET, SOCK_STREAM) # create a TCP socket that waits for a new peer to connect
-						downSocket.bind(('', 0))
-						downSocket.listen(8)
+						# print (fname + "======================: " +json.dumps(filesOffered[fname]))
+						print(filesOffered)
 						peerConnectSocket, peerAddr = downSocket.accept()
+						if DEBUG: print("Download!" + " CA = " + str(chunksAcquired) + " CP = " + str(chunksProvided))
 						f.write(peerConnectSocket.recv(524288))
-				
+						peerConnectSocket.close()
+
+				else : print(filesOffered)
+				if DEBUG: print("NEW SIZE = "+str(os.path.getsize(fname)))
 				peerData['filesize'] = os.path.getsize(fname)
 				peerData['numchunks'] = int(os.path.getsize(fname)/512)
 				peerSocket.send(json.dumps(peerData).encode())

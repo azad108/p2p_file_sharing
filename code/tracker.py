@@ -13,13 +13,7 @@ if __name__ == "__main__":
 		f.write(str(trackerPort))
 	if DEBUG: print('TRACKER_PORT=' + str(trackerPort))
 	peerLock = threading.Lock()
-	ioLock = threading.Lock()
-
-# class Chunk:
-# 	def __init__(self, filename, lastChunk):
-# 		self.filename = filename
-# 		self.lastChunk = lastChunk
-# 		self.peersWithMe = [] ## list of {peerId, IP, Port}
+	ioLock = threading.Lock() 
 
 class Peer:
 	def __init__(self, id, ip, port, filename, filesize, numchunks):
@@ -47,6 +41,7 @@ def signalConnectedPeer(peerId, connectionSocket, peerAddr):
 				print ('_________________________________________')
 				for f in peer.files:
 					print (f+": "+str(peer.files[f]['numchunks']))
+					print(peer.files[f]['ip'] + " - " + str(peer.files[f]['port']))
 				# print(str(peer.id)+json.dumps(peer.files))
 	connectionSocket.close()
 
@@ -59,7 +54,9 @@ def peerConnect():
 		peerFileSize = initialPeerData.get('filesize')
 		newPeer = Peer(peerId, peerAddr[0], initialPeerData['port'], initialPeerData['filename'], peerFileSize, \
 			int(peerFileSize/512)) 
-		with ioLock: print('PEER '+str(peerId)+' CONNECT: OFFERS '+ str(initialPeerData['totalFiles']))
+		with ioLock: 
+			print('PEER '+str(peerId)+' CONNECT: OFFERS '+ str(initialPeerData['totalFiles']))
+			print(str(peerId) + '    ' + initialPeerData['filename']+ ' ' + str(int(peerFileSize/512)))
 		connectionSocket.send(bytes(str(peerId).encode()))
 		with peerLock:
 			peers.append(newPeer)
