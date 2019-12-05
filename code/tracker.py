@@ -40,6 +40,7 @@ def signalConnectedPeer(peerId, connectionSocket, peerAddr):
 					} 
 				print ('_________________________________________')
 				for f in peer.files:
+					print (str(peer.id))
 					print (f+": "+str(peer.files[f]['numchunks']))
 					print(peer.files[f]['ip'] + " - " + str(peer.files[f]['port']))
 				# print(str(peer.id)+json.dumps(peer.files))

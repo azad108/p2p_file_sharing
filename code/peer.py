@@ -60,8 +60,10 @@ def requestFiles(peerSocket, countdown):
 				peerData['totalFiles'] = len(newDir)
 				peerSocket.send(json.dumps(peerData).encode())
 			else: 
+				if DEBUG: print("PEER FILE EXITS!")
 				chunksProvided = int(filesOffered[fname]['numchunks'])
 				chunksAcquired = int(os.path.getsize(fname)/512)
+				if DEBUG: print(fname + " - " + str(chunksAcquired) + " CP = " + str(chunksProvided))
 				if chunksAcquired > chunksProvided:
 					with open(fname, "+rb") as f:
 						f.seek(chunksProvided*512, 0)
@@ -74,17 +76,15 @@ def requestFiles(peerSocket, countdown):
 						if DEBUG: print("Upload!!" + " CA = " + str(chunksAcquired) + " CP = " + str(chunksProvided))
 						upSocket.send(f.read(524288))
 
-				elif chunksAcquired < chunksProvided:
-					
+				elif chunksAcquired < chunksProvided: 
 					with open(fname, "+ab") as f:
 						# print (fname + "======================: " +json.dumps(filesOffered[fname]))
 						print(filesOffered)
 						peerConnectSocket, peerAddr = downSocket.accept()
 						if DEBUG: print("Download!" + " CA = " + str(chunksAcquired) + " CP = " + str(chunksProvided))
-						f.write(peerConnectSocket.recv(524288))
+						f.write(peerConnectSocket.recv(4194304))
 						peerConnectSocket.close()
-
-				else : print(filesOffered)
+				
 				if DEBUG: print("NEW SIZE = "+str(os.path.getsize(fname)))
 				peerData['filesize'] = os.path.getsize(fname)
 				peerData['numchunks'] = int(os.path.getsize(fname)/512)
