@@ -46,15 +46,18 @@ def download(file, peers, originalSize, acquiredSize, startByte, endByte):
 	with writeLocks[file]:
 		print("DOWNLOADING "+ file)
 		myPeer = peers[0]
+		print (peers)
+		print (myPeer)
 		downSocket = socket(AF_INET, SOCK_STREAM)
 		downSocket.connect((str(myPeer['ip']), myPeer['port']))
 		print(myPeer)
 		with open(file, "+ab") as f: 
 			start = 0
 			fileRequest = {
-			'filename': file,
-			'startByte': startByte,
-			'endByte': endByte
+				'filename': file,
+				'startByte': startByte,
+				'endByte': endByte,
+				'originalSize': originalSize
 			}
 			downSocket.send(json.dumps(fileRequest).encode())
 			start = startByte
