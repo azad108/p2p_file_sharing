@@ -17,28 +17,55 @@ if __name__ == "__main__":
 	minAliveTime= sys.argv[3]
 
 
-	downSocket = socket(AF_INET, SOCK_STREAM) # create a TCP socket that waits for a new peer to connect
-	downSocket.bind(('', 0))
-	downSocket.listen(8)
-	downPort = downSocket.getsockname()[1] 
+	upSocket = socket(AF_INET, SOCK_STREAM) # create a TCP socket that waits for a new peer to connect
+	upSocket.bind(('', 0))
+	upSocket.listen(80)
+	upPort = upSocket.getsockname()[1] 
 	filesLock = threading.Lock()
+	writeLocks = {}
 
 def uploadFiles(myId):
+	while True:
+		print("ACCEPTINGGGGG AT "+str( upSocket))
+		peerConnectSocket, peerAddr = upSocket.accept()
+		print("ACCEPTED!!")
+		request = json.loads(peerConnectSocket.recv(128))
+		print("RECEIVED!!")
+		with open(request['filename'], "+rb") as f:
+			f.seek(request['startByte'], 0)
+			start = request['startByte']
+			while start < request['originalSize']:
+				## sending 512KB of data over to the peer
+				peerConnectSocket.send(f.read(524288))
+				start+=524288
 	
-	with open("fname", "+rb") as f:
-		f.seek(chunksProvided*512, 0)
-		## sending 512KB of data over to the peer
-		# print (fname + "======================: " +json.dumps(filesOffered[fname]))
-		print(filesOffered)
 
-		print(fname+" connect with: " + str((str(filesOffered[fname]['ip']), int(filesOffered[fname]['port']))))
-		upSocket = socket(AF_INET, SOCK_STREAM)
-		upSocket.connect((str(filesOffered[fname]['ip']), int(filesOffered[fname]['port']))) ## TCP connection with the new peer
-		upSocket.send(f.read(524288))
 
-	for file in allFiles
+def download(file, peers, originalSize, acquiredSize, startByte, endByte):
+	if os.path.getsize(file) == originalSize: os._exit(0)
+	with writeLocks[file]:
+		print("DOWNLOADING "+ file)
+		myPeer = peers[0]
+		downSocket = socket(AF_INET, SOCK_STREAM)
+		downSocket.connect((str(myPeer['ip']), myPeer['port']))
+		print(myPeer)
+		with open(file, "+ab") as f: 
+			start = 0
+			fileRequest = {
+			'filename': file,
+			'startByte': startByte,
+			'endByte': endByte
+			}
+			downSocket.send(json.dumps(fileRequest).encode())
+			start = startByte
+			while start < originalSize:
+				## sending 512KB of data over to the peer
+				f.write(downSocket.recv(524288))
+				start+=524288
+	
+
 def requestFiles(myId, hostIP, peerSocket, countdown):
-	global trackerAddr, trackerPort, minAliveTime, upSocket, downSocket, downPort
+	global trackerAddr, trackerPort, minAliveTime, upSocket, downSocket, upPort
 	timedOut = time.time()-countdown >= float(minAliveTime)
 	recvdAll = False
 	while True:
@@ -49,8 +76,9 @@ def requestFiles(myId, hostIP, peerSocket, countdown):
 		peerId = trackerData['id']
 		curFilename = trackerData['filename']
 		peers = trackerData['peers']
-		
-		for peer in peers: 
+		allFiles[curFilename] = peers
+
+		for peer in peers:
 			originalSize = peers[peer]['originalSize']
 			if peer not in allPeers and peer != str(myId): allPeers.append(peer)
 		sharedDir = [os.path.join(root, f) for root, _, files in os.walk('shared/')
@@ -58,76 +86,66 @@ def requestFiles(myId, hostIP, peerSocket, countdown):
 		if curFilename not in sharedDir:
 			open(curFilename, '+w').close ## just determined fname's existence so make a newfile w fname
 			if DEBUG: print(curFilename+" CREATED!")
-		allFiles[curFilename]= {
-		str(myId):{
-				'ip': hostIP, 
-				'port': downPort,
+			writeLocks[curFilename] = threading.Lock()	
+		allFiles[curFilename][str(myId)]={
+				'ip': hostIP,
+				'port': upPort,
 				'originalSize': originalSize,
 				'acquiredSize': os.path.getsize(curFilename)
-			}
-		}
+			} 
 
 		sharedDir = [os.path.join(root, f) for root, _, files in os.walk('shared/')
 		                       for f in files] 
 
 		acquiredSize = os.path.getsize(curFilename)
 		if acquiredSize < originalSize:
-			with open(curFilename, "+ab") as f: 
-				peerConnectSocket, peerAddr = downSocket.accept()
-				f.write(peerConnectSocket.recv(4194304))
-				peerConnectSocket.close()
+			downloadPeers = []
+			for peer in peers:
+				if peers[peer]['acquiredSize'] > acquiredSize and peer != str(myId): 
+					downloadPeers.append(peers[peer])
 
-		allFiles[curFilename][str(myId)]['acquiredSize']= os.path.getsize(curFilename)
+			# downloadPeers.sort(key=lambda p: p['acquiredSize'], reverse=True)
+			if len(downloadPeers) >= 1:
+			# 	maxSize = downloadPeers[len(downloadPeers)-1]['acquiredSize']
+			# 	median = acquiredSize + (maxSize - acquiredSize)
+			# 	firstPeers = filter(lambda p: p['acquiredSize'] <= median, downloadPeers)
+			# 	lastPeers = filter(lambda p: p['acquiredSize'] > median, downloadPeers)
+			# 	if len(firstPeers) >= 1 and len(lastPeers) >= 1:
+			# 		firstDownloadThread = threading.Thread(name="FIRST PART DOWNLOAD THREAD", target=download,\
+			# 			args=(firstPeers, originalSize, acquiredSize, acquiredSize, median))
+			# 		lastDownloadThread = threading.Thread(name="LAST PART DOWNLOAD THREAD", target=download,\
+			# 			args=(lastPeers, originalSize, acquiredSize, median+1, originalSize))
+			# 		firstDownloadThread.start()
+			# 		lastDownloadThread.start()
+			# else:
+				downloadThread = threading.Thread(name="DOWNLOAD THREAD", target=download,\
+					args=(curFilename, downloadPeers, originalSize, acquiredSize, acquiredSize, originalSize))
+				downloadThread.start()
+
+		## update acquired size since it's downloaded curFile
+		allFiles[curFilename][str(myId)] = {
+				'ip': hostIP,
+				'port': upPort,
+				'originalSize': originalSize,
+				'acquiredSize': os.path.getsize(curFilename)
+			} 
 		response = {
 			'id': myId,
 			'filename': curFilename,
 			'peers': allFiles[curFilename]
-		}
-
-
-		print(allFiles)
-		peerSocket.send(json.dumps(response).encode())
-			# peerData = {
-			# 	'id': curPeerData['id'],
-			# 	'filename': fname, 
-			# 	'totalFiles': len(sharedDir),
-			# 	'ip': filesOffered[fname]['ip'],
-			# 	'port': filesOffered[fname]['port']
-			# }
-			# if fname not in sharedDir:
-			# 	newDir = [os.path.join(root, f) for root, _, files in os.walk('shared/')
-			# 						for f in files]
-			# 	peerData['filesize'] = os.path.getsize(fname)
-			# 	peerData['numchunks'] = math.ceil(os.path.getsize(fname)/512)
-			# 	peerData['totalFiles'] = len(newDir)
-			# 	peerSocket.send(json.dumps(peerData).encode())
-			# else: 
-			# 	if DEBUG: print("PEER FILE EXITS!")
-			# 	chunksProvided = int(filesOffered[fname]['numchunks'])
-			# 	chunksAcquired = math.ceil(os.path.getsize(fname)/512)
-			# 	if DEBUG: 
-			# 		print("THIS PEER: " +str()+ fname + " - " + str(chunksAcquired) + " CP = " + str(chunksProvided))
-
-			# if chunksAcquired > chunksProvided:
-
-
-			# elif chunksAcquired < chunksProvided: 
-
-			
-			# if DEBUG: print("NEW SIZE = "+str(os.path.getsize(fname)))
-			# peerData['filesize'] = os.path.getsize(fname)
-			# peerData['numchunks'] = math.ceil(os.path.getsize(fname)/512)
+		} 
+		peerSocket.send(json.dumps(response).encode()) 
 			
 
 
 def trackerConnect():
-	global hostIP
+	global hostIP, upPort
 	sharedDir = [os.path.join(root, f) for root, _, files in os.walk('shared/')
 	                       for f in files]
 
 	curPeerData['filesize'] = os.path.getsize(sharedDir[0])
 	curPeerData['numchunks'] = math.ceil(os.path.getsize(sharedDir[0])/512)
-
+	
 	if DEBUG: print("SIZE OF : " + sharedDir[0] + " = " + str(curPeerData['filesize']))
 	peerSocket = socket(AF_INET, SOCK_STREAM)
 	peerSocket.connect((trackerAddr, trackerPort)) ## TCP connection with the tracker
@@ -137,7 +155,7 @@ def trackerConnect():
 		"filename": sharedDir[0],
 		"filesize": os.path.getsize(sharedDir[0]),
 		"totalFiles": len(sharedDir),
-		"port": downPort
+		"port": upPort
 		})
 	peerSocket.send(initialPeerData.encode())
 

@@ -33,6 +33,7 @@ class Peer:
 
 
 def signalConnectedPeer(peerId, connectionSocket, peerAddr):
+	printtt = 0
 	while True:
 		for fname in files.copy(): ## make sure all peers have all the files
 			request = {
@@ -44,16 +45,8 @@ def signalConnectedPeer(peerId, connectionSocket, peerAddr):
 			connectionSocket.send(peerInfo.encode())
 			peerResponse = connectionSocket.recv(1024).decode()
 			peerResponse = json.loads(peerResponse)
-			# with peerLock: 
-				# peer.files[peerResponse['filename']] = {
-				# 	'numchunks': peerResponse['numchunks'],
-				# 	'ip': peerResponse['ip'],
-				# 	'port': peerResponse['port']
-				# 	}
-
-				
-				# print ('_________________________________________')
-				# print(peerResponse)
+			files[peerResponse['filename']] = peerResponse['peers']
+		print("__________________"+str(peerId)+"_____________________")
 		print(files)
 	connectionSocket.close()
 
