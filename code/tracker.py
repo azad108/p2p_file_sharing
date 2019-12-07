@@ -14,6 +14,7 @@ if __name__ == "__main__":
 		f.write(str(trackerPort))
 	if DEBUG: print('TRACKER_PORT=' + str(trackerPort))
 	peerLock = threading.Lock()
+	filesLock = threading.Lock()
 	ioLock = threading.Lock() 
 
 class Peer:
@@ -34,7 +35,7 @@ class Peer:
 
 def signalConnectedPeer(peerId, connectionSocket, peerAddr):
 	printtt = 0
-	while True:
+	while True: 
 		for fname in files.copy(): ## make sure all peers have all the files
 			request = {
 				'id': peerId,  # id of the peer that's makinng request
@@ -45,6 +46,12 @@ def signalConnectedPeer(peerId, connectionSocket, peerAddr):
 			connectionSocket.send(peerInfo.encode())
 			peerResponse = connectionSocket.recv(1024).decode()
 			peerResponse = json.loads(peerResponse)
+			with filesLock:
+				if peerResponse['isClosed'] == 1: 
+					for file in files:
+						files[file].pop(str(peerId), None)
+					if not files[file]: files.pop(file, None)
+					return
 			files[peerResponse['filename']] = peerResponse['peers']
 		print("__________________"+str(peerId)+"_____________________")
 		print(files)
@@ -69,13 +76,14 @@ def peerConnect():
 		with peerLock:
 			peers.append(newPeer) 
 			print(initialPeerData['filename'])
+		with filesLock:
 			files[initialPeerData['filename']] = {}
-			files[initialPeerData['filename']][peerId] = {
+			files[initialPeerData['filename']][str(peerId)] = {
 					'ip': peerAddr[0], 
 					'port': initialPeerData['port'],
 					'originalSize': peerFileSize,
 					'acquiredSize': peerFileSize
-					}
+			}
 			
 			print(files)
 			## peerIds: mapped onto {IP, Port, originalSize, acquiredSize} tuple

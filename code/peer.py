@@ -26,10 +26,14 @@ if __name__ == "__main__":
 
 def uploadFiles(myId):
 	while True:
-		print("ACCEPTINGGGGG AT "+str( upSocket))
+		print("ACCEPTINGGGGG AT ")
 		peerConnectSocket, peerAddr = upSocket.accept()
 		print("ACCEPTED!!")
-		request = json.loads(peerConnectSocket.recv(128))
+		request = peerConnectSocket.recv(128)
+		if (request == 0):
+			peerConnectSocket.close()
+			continue
+		request = json.loads(request)
 		print("RECEIVED!!")
 		with open(request['filename'], "+rb") as f:
 			f.seek(request['startByte'], 0)
@@ -38,10 +42,10 @@ def uploadFiles(myId):
 				## sending 512KB of data over to the peer
 				peerConnectSocket.send(f.read(524288))
 				start+=524288
-	
 
 
 def download(file, peers, originalSize, acquiredSize, startByte, endByte):
+	print("OG SIZE = " + str(originalSize)+ " CUR SIZE = " + str(os.path.getsize(file)))
 	if os.path.getsize(file) == originalSize: os._exit(0)
 	with writeLocks[file]:
 		print("DOWNLOADING "+ file)
@@ -65,15 +69,12 @@ def download(file, peers, originalSize, acquiredSize, startByte, endByte):
 				## sending 512KB of data over to the peer
 				f.write(downSocket.recv(524288))
 				start+=524288
-	
+			downSocket.close()
 
-def requestFiles(myId, hostIP, peerSocket, countdown):
+def requestFiles(myId, hostIP, peerSocket, startTime):
 	global trackerAddr, trackerPort, minAliveTime, upSocket, downSocket, upPort
-	timedOut = time.time()-countdown >= float(minAliveTime)
-	recvdAll = False
+	
 	while True:
-		if recvdAll: break
-
 		trackerData = peerSocket.recv(1024).decode()
 		trackerData = json.loads(trackerData)
 		peerId = trackerData['id']
@@ -131,14 +132,31 @@ def requestFiles(myId, hostIP, peerSocket, countdown):
 				'port': upPort,
 				'originalSize': originalSize,
 				'acquiredSize': os.path.getsize(curFilename)
-			} 
+			}
+
+		isDownloaded = True
+		isClosed = 0
+		for file in allFiles:
+			if allFiles[file][str(myId)]['originalSize'] > allFiles[file][str(myId)]['acquiredSize']:
+				isDownloaded = False
+
+		if isDownloaded and time.time()-startTime >= float(minAliveTime): 
+			print("TIME TAKEN: " + str(time.time()-startTime))
+			isClosed = 1
+			
 		response = {
 			'id': myId,
 			'filename': curFilename,
-			'peers': allFiles[curFilename]
+			'peers': allFiles[curFilename],
+			'isClosed': isClosed
 		} 
 		peerSocket.send(json.dumps(response).encode()) 
-			
+		if isClosed == 1:
+			peerSocket.close()
+			os._exit(0)
+
+		
+
 
 
 def trackerConnect():
@@ -153,13 +171,13 @@ def trackerConnect():
 	peerSocket = socket(AF_INET, SOCK_STREAM)
 	peerSocket.connect((trackerAddr, trackerPort)) ## TCP connection with the tracker
 	## sending it's file info over to the tracker
-	countdown = time.time() ## start the timer for to check duration that the peer lives
+	startTime = time.time() ## start the timer for to check duration that the peer lives
 	initialPeerData = json.dumps({
 		"filename": sharedDir[0],
 		"filesize": os.path.getsize(sharedDir[0]),
 		"totalFiles": len(sharedDir),
-		"port": upPort
-		})
+		"port": upPort 
+	})
 	peerSocket.send(initialPeerData.encode())
 
 	## waiting to be assigned a new ID
@@ -168,7 +186,7 @@ def trackerConnect():
 	myIP = ackData['ip']
 	curPeerData['id'] = myId
 	if DEBUG: print("Current Peer's ID = " + str(myId))
-	requestThread = threading.Thread(name="REQUEST THREAD", target=requestFiles, args=(myId, myIP, peerSocket, countdown))
+	requestThread = threading.Thread(name="REQUEST THREAD", target=requestFiles, args=(myId, myIP, peerSocket, startTime))
 	requestThread.start()
 	uploadThread = threading.Thread(name="UPLOAD THREAD", target=uploadFiles, args=(myId,))
 	uploadThread.start()
