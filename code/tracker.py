@@ -15,26 +15,9 @@ if __name__ == "__main__":
 	if DEBUG: print('TRACKER_PORT=' + str(trackerPort))
 	peerLock = threading.Lock()
 	filesLock = threading.Lock()
-	ioLock = threading.Lock() 
-
-class Peer:
-	def __init__(self, id, ip, port, filename, filesize, numchunks):
-		self.id = id
-		self.ip = ip
-		self.port = port
-		self.filename = filename
-		self.filesize = filesize
-		self.numchunks = int(numchunks) ## chunks of original file 
-
-# class File:
-# 	def __init__(self, filename, originalSize):
-# 		self.filename = filename
-# 		self.originalSize = originalSize
-# 		self.peersWithMe = {}
-
+	ioLock = threading.Lock()  
 
 def signalConnectedPeer(peerId, connectionSocket, peerAddr):
-	printtt = 0
 	while True: 
 		for fname in files.copy(): ## make sure all peers have all the files
 			request = {
@@ -48,10 +31,15 @@ def signalConnectedPeer(peerId, connectionSocket, peerAddr):
 			peerResponse = json.loads(peerResponse)
 			with filesLock:
 				if peerResponse['isClosed'] == 1: 
+					numfiles=0
+					for file in files: numfiles+=1
+					with ioLock: print('PEER '+ str(peerId) +' DISCONNECT: '+'RECEIVED '+str(numfiles))
 					for file in files:
+						with ioLock: print(str(peerId) + '    ' + file)
 						files[file].pop(str(peerId), None)
 					if not files[file]: files.pop(file, None)
 					connectionSocket.close()
+					if DEBUG: print(files)
 					return
 			files[peerResponse['filename']] = peerResponse['peers']
 
@@ -64,17 +52,14 @@ def peerConnect():
 		connectionSocket, peerAddr = trackerSocket.accept()
 		initialPeerData = connectionSocket.recv(1024).decode()
 		initialPeerData = json.loads(initialPeerData)
-		peerFileSize = initialPeerData.get('filesize')
-		# newPeer = Peer(peerId, peerAddr[0], initialPeerData['port'], initialPeerData['filename'], peerFileSize, \
-		# 	math.ceil(peerFileSize/512)) 
+		peerFileSize = initialPeerData.get('filesize') 
 		with ioLock: 
 			print('PEER '+str(peerId)+' CONNECT: OFFERS '+ str(initialPeerData['totalFiles']))
 			print(str(peerId) + '    ' + initialPeerData['filename']+ ' ' + str(math.ceil(peerFileSize/512)))
 		ackData = {'id': peerId, 'ip': peerAddr[0]}
 
 		connectionSocket.send(json.dumps(ackData).encode())
-		# with peerLock:
-		# 	peers.append(newPeer)  
+ 
 		with filesLock:
 			files[initialPeerData['filename']] = {}
 			files[initialPeerData['filename']][str(peerId)] = {

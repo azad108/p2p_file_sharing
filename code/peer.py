@@ -1,8 +1,9 @@
 import os, re, sys, threading, time, json, math, socket
 from socket import *
-DEBUG = False
+
 
 if __name__ == "__main__":
+	DEBUG = False
 	if len(sys.argv) != 4:
 	  print("Usage: {} {} {} {}".format(
 	    "./peer", "TRACKER_IP", "TRACKER_PORT", "MIN_ALIVE_TIME"))
@@ -36,15 +37,14 @@ def emptySocket(sock):
 def uploadFiles(myId):
 	global killPeer
 	while not killPeer:
-		if DEBUG: print("ACCEPTINGGGGG REQUESTS!")
+		if DEBUG: print("ACCEPTING REQUESTS!")
 		peerConnectSocket, peerAddr = upSocket.accept()
 		request = peerConnectSocket.recv(128).decode()
 		if DEBUG: print(request)
 		if (request == 'DOWNLOADED'):
 			peerConnectSocket.close()
 			continue
-		request = json.loads(request)
-		if DEBUG: print("RECEIVED!!")
+		request = json.loads(request) 
 		with open(request['filename'], "+rb") as f:
 			f.seek(request['startByte'], 0)
 			start = request['startByte']
@@ -120,20 +120,7 @@ def requestFiles(myId, hostIP, peerSocket, startTime):
 				if peers[peer]['acquiredSize'] > acquiredSize and peer != str(myId): 
 					downloadPeers.append(peers[peer])
 
-			# downloadPeers.sort(key=lambda p: p['acquiredSize'], reverse=True)
 			if len(downloadPeers) >= 1:
-			# 	maxSize = downloadPeers[len(downloadPeers)-1]['acquiredSize']
-			# 	median = acquiredSize + (maxSize - acquiredSize)
-			# 	firstPeers = filter(lambda p: p['acquiredSize'] <= median, downloadPeers)
-			# 	lastPeers = filter(lambda p: p['acquiredSize'] > median, downloadPeers)
-			# 	if len(firstPeers) >= 1 and len(lastPeers) >= 1:
-			# 		firstDownloadThread = threading.Thread(name="FIRST PART DOWNLOAD THREAD", target=download,\
-			# 			args=(firstPeers, originalSize, acquiredSize, acquiredSize, median))
-			# 		lastDownloadThread = threading.Thread(name="LAST PART DOWNLOAD THREAD", target=download,\
-			# 			args=(lastPeers, originalSize, acquiredSize, median+1, originalSize))
-			# 		firstDownloadThread.start()
-			# 		lastDownloadThread.start()
-			# else:
 				downloadThread = threading.Thread(name="DOWNLOAD THREAD", target=download,\
 					args=(curFilename, downloadPeers, originalSize, acquiredSize, acquiredSize, originalSize))
 				downloadThread.start()
