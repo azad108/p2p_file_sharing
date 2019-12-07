@@ -24,14 +24,22 @@ if __name__ == "__main__":
 	filesLock = threading.Lock()
 	writeLocks = {}
 
+## to flush the TCP data sockets
+def emptySocket(sock):
+    """remove the data present on the socket"""
+    input = [sock]
+    while 1:
+        inputready, o, e = select.select(input,[],[], 0.0)
+        if len(inputready)==0: break
+        for s in inputready: s.recv(1)
+
 def uploadFiles(myId):
 	global killPeer
 	while not killPeer:
 		if DEBUG: print("ACCEPTINGGGGG REQUESTS!")
 		peerConnectSocket, peerAddr = upSocket.accept()
-		if DEBUG: print("ACCEPTED!!")
 		request = peerConnectSocket.recv(128).decode()
-		print(request)
+		if DEBUG: print(request)
 		if (request == 'DOWNLOADED'):
 			peerConnectSocket.close()
 			continue
@@ -47,9 +55,9 @@ def uploadFiles(myId):
 
 
 def download(file, peers, originalSize, acquiredSize, startByte, endByte):
-	print("ORIGINAL SIZE = " + str(originalSize)+ " CUR SIZE = " + str(os.path.getsize(file)))
-	if os.path.getsize(file) >= originalSize: os._exit(0)
-	print("DOWNLOADING "+ file)
+	global killPeer
+	print(file+ ": ORIGINAL SIZE = " + str(originalSize)+ " CUR SIZE = " + str(os.path.getsize(file)))
+	if killPeer or os.path.getsize(file) >= originalSize or writeLocks[file].locked(): return
 	myPeer = peers[0]
 	downSocket = socket(AF_INET, SOCK_STREAM)
 	downSocket.connect((str(myPeer['ip']), myPeer['port']))
@@ -63,13 +71,15 @@ def download(file, peers, originalSize, acquiredSize, startByte, endByte):
 	start = startByte
 	while start < originalSize:
 		## sending 512KB of data over to the peer
-		with open(file, "+ab") as f: 
-			f.write(downSocket.recv(524288))
-		start+=524288
+		with writeLocks[file]:
+			with open(file, "+ab") as f: 
+				f.write(downSocket.recv(524288))
+			start+=524288
 	eot = 'DOWNLOADED'
-	if start >= originalSize: 
+	if os.path.getsize(file) >= originalSize: 
 		downSocket.send(eot.encode())
 		downSocket.close()
+		if DEBUG: print("Final Size =" + str(os.path.getsize(file)))
 
 def requestFiles(myId, hostIP, peerSocket, startTime):
 	global trackerAddr, trackerPort, minAliveTime, upSocket, downSocket, upPort, killPeer
@@ -109,23 +119,22 @@ def requestFiles(myId, hostIP, peerSocket, startTime):
 					downloadPeers.append(peers[peer])
 
 			# downloadPeers.sort(key=lambda p: p['acquiredSize'], reverse=True)
-			with writeLocks[curFilename]:
-				if len(downloadPeers) >= 1:
-				# 	maxSize = downloadPeers[len(downloadPeers)-1]['acquiredSize']
-				# 	median = acquiredSize + (maxSize - acquiredSize)
-				# 	firstPeers = filter(lambda p: p['acquiredSize'] <= median, downloadPeers)
-				# 	lastPeers = filter(lambda p: p['acquiredSize'] > median, downloadPeers)
-				# 	if len(firstPeers) >= 1 and len(lastPeers) >= 1:
-				# 		firstDownloadThread = threading.Thread(name="FIRST PART DOWNLOAD THREAD", target=download,\
-				# 			args=(firstPeers, originalSize, acquiredSize, acquiredSize, median))
-				# 		lastDownloadThread = threading.Thread(name="LAST PART DOWNLOAD THREAD", target=download,\
-				# 			args=(lastPeers, originalSize, acquiredSize, median+1, originalSize))
-				# 		firstDownloadThread.start()
-				# 		lastDownloadThread.start()
-				# else:
-					downloadThread = threading.Thread(name="DOWNLOAD THREAD", target=download,\
-						args=(curFilename, downloadPeers, originalSize, acquiredSize, acquiredSize, originalSize))
-					downloadThread.start()
+			if len(downloadPeers) >= 1:
+			# 	maxSize = downloadPeers[len(downloadPeers)-1]['acquiredSize']
+			# 	median = acquiredSize + (maxSize - acquiredSize)
+			# 	firstPeers = filter(lambda p: p['acquiredSize'] <= median, downloadPeers)
+			# 	lastPeers = filter(lambda p: p['acquiredSize'] > median, downloadPeers)
+			# 	if len(firstPeers) >= 1 and len(lastPeers) >= 1:
+			# 		firstDownloadThread = threading.Thread(name="FIRST PART DOWNLOAD THREAD", target=download,\
+			# 			args=(firstPeers, originalSize, acquiredSize, acquiredSize, median))
+			# 		lastDownloadThread = threading.Thread(name="LAST PART DOWNLOAD THREAD", target=download,\
+			# 			args=(lastPeers, originalSize, acquiredSize, median+1, originalSize))
+			# 		firstDownloadThread.start()
+			# 		lastDownloadThread.start()
+			# else:
+				downloadThread = threading.Thread(name="DOWNLOAD THREAD", target=download,\
+					args=(curFilename, downloadPeers, originalSize, acquiredSize, acquiredSize, originalSize))
+				downloadThread.start()
 
 		## update acquired size since it's downloaded curFile
 		allFiles[curFilename][str(myId)] = {
