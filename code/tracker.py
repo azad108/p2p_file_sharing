@@ -2,7 +2,7 @@ import os, sys, threading, time, json, math
 from socket import *
 
 if __name__ == "__main__":
-	DEBUG = True
+	DEBUG = False
 	chunkId = 0
 	peers = []
 	files = {}

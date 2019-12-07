@@ -1,6 +1,6 @@
 import os, re, sys, threading, time, json, math, socket
 from socket import *
-DEBUG = True
+DEBUG = False
 
 if __name__ == "__main__":
 	if len(sys.argv) != 4:
@@ -56,7 +56,9 @@ def uploadFiles(myId):
 
 def download(file, peers, originalSize, acquiredSize, startByte, endByte):
 	global killPeer
-	print(file+ ": ORIGINAL SIZE = " + str(originalSize)+ " CUR SIZE = " + str(os.path.getsize(file)))
+	if DEBUG: print(file+ ": ORIGINAL SIZE = " + str(originalSize)+ " CUR SIZE = " + str(os.path.getsize(file)))
+	if DEBUG and killPeer: print ("PEER KILLED!")
+	if DEBUG and  writeLocks[file].locked(): print("STILL WRITING!")
 	if killPeer or os.path.getsize(file) >= originalSize or writeLocks[file].locked(): return
 	myPeer = peers[0]
 	downSocket = socket(AF_INET, SOCK_STREAM)
