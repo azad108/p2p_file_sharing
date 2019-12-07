@@ -15,7 +15,7 @@ if __name__ == "__main__":
 	trackerAddr = sys.argv[1]
 	trackerPort = int(sys.argv[2])
 	minAliveTime= sys.argv[3]
-
+	killPeer = False
 
 	upSocket = socket(AF_INET, SOCK_STREAM) # create a TCP socket that waits for a new peer to connect
 	upSocket.bind(('', 0))
@@ -25,16 +25,18 @@ if __name__ == "__main__":
 	writeLocks = {}
 
 def uploadFiles(myId):
-	while True:
-		print("ACCEPTINGGGGG AT ")
+	global killPeer
+	while not killPeer:
+		if DEBUG: print("ACCEPTINGGGGG REQUESTS!")
 		peerConnectSocket, peerAddr = upSocket.accept()
-		print("ACCEPTED!!")
-		request = peerConnectSocket.recv(128)
-		if (request == 0):
+		if DEBUG: print("ACCEPTED!!")
+		request = peerConnectSocket.recv(128).decode()
+		print(request)
+		if (request == 'DOWNLOADED'):
 			peerConnectSocket.close()
 			continue
 		request = json.loads(request)
-		print("RECEIVED!!")
+		if DEBUG: print("RECEIVED!!")
 		with open(request['filename'], "+rb") as f:
 			f.seek(request['startByte'], 0)
 			start = request['startByte']
@@ -45,34 +47,32 @@ def uploadFiles(myId):
 
 
 def download(file, peers, originalSize, acquiredSize, startByte, endByte):
-	print("OG SIZE = " + str(originalSize)+ " CUR SIZE = " + str(os.path.getsize(file)))
-	if os.path.getsize(file) == originalSize: os._exit(0)
-	with writeLocks[file]:
-		print("DOWNLOADING "+ file)
-		myPeer = peers[0]
-		print (peers)
-		print (myPeer)
-		downSocket = socket(AF_INET, SOCK_STREAM)
-		downSocket.connect((str(myPeer['ip']), myPeer['port']))
-		print(myPeer)
+	print("ORIGINAL SIZE = " + str(originalSize)+ " CUR SIZE = " + str(os.path.getsize(file)))
+	if os.path.getsize(file) >= originalSize: os._exit(0)
+	print("DOWNLOADING "+ file)
+	myPeer = peers[0]
+	downSocket = socket(AF_INET, SOCK_STREAM)
+	downSocket.connect((str(myPeer['ip']), myPeer['port']))
+	fileRequest = {
+		'filename': file,
+		'startByte': startByte,
+		'endByte': endByte,
+		'originalSize': originalSize,
+	}
+	downSocket.send(json.dumps(fileRequest).encode())
+	start = startByte
+	while start < originalSize:
+		## sending 512KB of data over to the peer
 		with open(file, "+ab") as f: 
-			start = 0
-			fileRequest = {
-				'filename': file,
-				'startByte': startByte,
-				'endByte': endByte,
-				'originalSize': originalSize
-			}
-			downSocket.send(json.dumps(fileRequest).encode())
-			start = startByte
-			while start < originalSize:
-				## sending 512KB of data over to the peer
-				f.write(downSocket.recv(524288))
-				start+=524288
-			downSocket.close()
+			f.write(downSocket.recv(524288))
+		start+=524288
+	eot = 'DOWNLOADED'
+	if start >= originalSize: 
+		downSocket.send(eot.encode())
+		downSocket.close()
 
 def requestFiles(myId, hostIP, peerSocket, startTime):
-	global trackerAddr, trackerPort, minAliveTime, upSocket, downSocket, upPort
+	global trackerAddr, trackerPort, minAliveTime, upSocket, downSocket, upPort, killPeer
 	
 	while True:
 		trackerData = peerSocket.recv(1024).decode()
@@ -109,22 +109,23 @@ def requestFiles(myId, hostIP, peerSocket, startTime):
 					downloadPeers.append(peers[peer])
 
 			# downloadPeers.sort(key=lambda p: p['acquiredSize'], reverse=True)
-			if len(downloadPeers) >= 1:
-			# 	maxSize = downloadPeers[len(downloadPeers)-1]['acquiredSize']
-			# 	median = acquiredSize + (maxSize - acquiredSize)
-			# 	firstPeers = filter(lambda p: p['acquiredSize'] <= median, downloadPeers)
-			# 	lastPeers = filter(lambda p: p['acquiredSize'] > median, downloadPeers)
-			# 	if len(firstPeers) >= 1 and len(lastPeers) >= 1:
-			# 		firstDownloadThread = threading.Thread(name="FIRST PART DOWNLOAD THREAD", target=download,\
-			# 			args=(firstPeers, originalSize, acquiredSize, acquiredSize, median))
-			# 		lastDownloadThread = threading.Thread(name="LAST PART DOWNLOAD THREAD", target=download,\
-			# 			args=(lastPeers, originalSize, acquiredSize, median+1, originalSize))
-			# 		firstDownloadThread.start()
-			# 		lastDownloadThread.start()
-			# else:
-				downloadThread = threading.Thread(name="DOWNLOAD THREAD", target=download,\
-					args=(curFilename, downloadPeers, originalSize, acquiredSize, acquiredSize, originalSize))
-				downloadThread.start()
+			with writeLocks[curFilename]:
+				if len(downloadPeers) >= 1:
+				# 	maxSize = downloadPeers[len(downloadPeers)-1]['acquiredSize']
+				# 	median = acquiredSize + (maxSize - acquiredSize)
+				# 	firstPeers = filter(lambda p: p['acquiredSize'] <= median, downloadPeers)
+				# 	lastPeers = filter(lambda p: p['acquiredSize'] > median, downloadPeers)
+				# 	if len(firstPeers) >= 1 and len(lastPeers) >= 1:
+				# 		firstDownloadThread = threading.Thread(name="FIRST PART DOWNLOAD THREAD", target=download,\
+				# 			args=(firstPeers, originalSize, acquiredSize, acquiredSize, median))
+				# 		lastDownloadThread = threading.Thread(name="LAST PART DOWNLOAD THREAD", target=download,\
+				# 			args=(lastPeers, originalSize, acquiredSize, median+1, originalSize))
+				# 		firstDownloadThread.start()
+				# 		lastDownloadThread.start()
+				# else:
+					downloadThread = threading.Thread(name="DOWNLOAD THREAD", target=download,\
+						args=(curFilename, downloadPeers, originalSize, acquiredSize, acquiredSize, originalSize))
+					downloadThread.start()
 
 		## update acquired size since it's downloaded curFile
 		allFiles[curFilename][str(myId)] = {
@@ -137,8 +138,13 @@ def requestFiles(myId, hostIP, peerSocket, startTime):
 		isDownloaded = True
 		isClosed = 0
 		for file in allFiles:
+			## I do not have at least one other peer's files
 			if allFiles[file][str(myId)]['originalSize'] > allFiles[file][str(myId)]['acquiredSize']:
 				isDownloaded = False
+			## at least one other peer do not have my files 
+			for peer in allFiles[file]:
+				if allFiles[file][peer]['originalSize'] > allFiles[file][peer]['acquiredSize']:
+					isDownloaded = False
 
 		if isDownloaded and time.time()-startTime >= float(minAliveTime): 
 			print("TIME TAKEN: " + str(time.time()-startTime))
@@ -152,6 +158,7 @@ def requestFiles(myId, hostIP, peerSocket, startTime):
 		} 
 		peerSocket.send(json.dumps(response).encode()) 
 		if isClosed == 1:
+			killPeer = True
 			peerSocket.close()
 			os._exit(0)
 

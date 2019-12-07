@@ -51,11 +51,11 @@ def signalConnectedPeer(peerId, connectionSocket, peerAddr):
 					for file in files:
 						files[file].pop(str(peerId), None)
 					if not files[file]: files.pop(file, None)
+					connectionSocket.close()
 					return
 			files[peerResponse['filename']] = peerResponse['peers']
-		print("__________________"+str(peerId)+"_____________________")
-		print(files)
-	connectionSocket.close()
+
+	
 
 
 def peerConnect():
@@ -65,17 +65,16 @@ def peerConnect():
 		initialPeerData = connectionSocket.recv(1024).decode()
 		initialPeerData = json.loads(initialPeerData)
 		peerFileSize = initialPeerData.get('filesize')
-		newPeer = Peer(peerId, peerAddr[0], initialPeerData['port'], initialPeerData['filename'], peerFileSize, \
-			math.ceil(peerFileSize/512)) 
+		# newPeer = Peer(peerId, peerAddr[0], initialPeerData['port'], initialPeerData['filename'], peerFileSize, \
+		# 	math.ceil(peerFileSize/512)) 
 		with ioLock: 
 			print('PEER '+str(peerId)+' CONNECT: OFFERS '+ str(initialPeerData['totalFiles']))
 			print(str(peerId) + '    ' + initialPeerData['filename']+ ' ' + str(math.ceil(peerFileSize/512)))
 		ackData = {'id': peerId, 'ip': peerAddr[0]}
 
 		connectionSocket.send(json.dumps(ackData).encode())
-		with peerLock:
-			peers.append(newPeer) 
-			print(initialPeerData['filename'])
+		# with peerLock:
+		# 	peers.append(newPeer)  
 		with filesLock:
 			files[initialPeerData['filename']] = {}
 			files[initialPeerData['filename']][str(peerId)] = {
@@ -85,8 +84,8 @@ def peerConnect():
 					'acquiredSize': peerFileSize
 			}
 			
-			print(files)
-			## peerIds: mapped onto {IP, Port, originalSize, acquiredSize} tuple
+		if DEBUG: print(files)
+		## peerIds: mapped onto {IP, Port, originalSize, acquiredSize} tuple
 		
 		signalConnectedPeerThread = threading.Thread(name="SIGNAL CONNECTED PEER", target=signalConnectedPeer, args=(peerId, connectionSocket, peerAddr))
 		peerId += 1 
